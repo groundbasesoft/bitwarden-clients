@@ -23,6 +23,7 @@ const runtime = {
   },
   sendMessage: jest.fn(),
   getManifest: jest.fn(),
+  connect: jest.fn(),
 };
 
 const contextMenus = {
