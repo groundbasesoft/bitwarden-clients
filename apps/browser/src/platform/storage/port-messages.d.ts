@@ -1,4 +1,17 @@
-import { AbstractStorageService } from "@bitwarden/common/platform/abstractions/storage.service";
+import {
+  AbstractMemoryStorageService,
+  AbstractStorageService,
+} from "@bitwarden/common/platform/abstractions/storage.service";
+
+type MemoryStoragePortMessage = {
+  id?: string;
+  key?: string;
+  data: string;
+  originator: "foreground" | "background";
+  action?:
+    | keyof Pick<AbstractMemoryStorageService, "get" | "getBypassCache" | "has" | "save" | "remove">
+    | "subject_update";
+};
 
 type ChromeStoragePortMessage = {
   id?: string;
