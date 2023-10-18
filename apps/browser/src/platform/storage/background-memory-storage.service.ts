@@ -23,7 +23,7 @@ export class BackgroundMemoryStorageService extends MemoryStorageService {
     this.updates$.subscribe((update) => {
       this.sendMessage({
         action: "subject_update",
-        data: JSON.stringify(update),
+        data: update,
       });
     });
   }
@@ -43,7 +43,7 @@ export class BackgroundMemoryStorageService extends MemoryStorageService {
         break;
       }
       case "save":
-        await this.save(message.key, JSON.parse(message.data));
+        await this.save(message.key, message.data);
         break;
       case "remove":
         await this.remove(message.key);
@@ -53,7 +53,7 @@ export class BackgroundMemoryStorageService extends MemoryStorageService {
     this.sendMessage({
       id: message.id,
       key: message.key,
-      data: JSON.stringify(result),
+      data: result,
     });
   }
 

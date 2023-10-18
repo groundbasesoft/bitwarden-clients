@@ -6,7 +6,7 @@ import {
 type MemoryStoragePortMessage = {
   id?: string;
   key?: string;
-  data: string;
+  data: unknown;
   originator: "foreground" | "background";
   action?:
     | keyof Pick<AbstractMemoryStorageService, "get" | "getBypassCache" | "has" | "save" | "remove">
@@ -16,7 +16,7 @@ type MemoryStoragePortMessage = {
 type ChromeStoragePortMessage = {
   id?: string;
   key?: string;
-  data: string;
+  data: unknown;
   originator: "foreground" | "background";
   action?: keyof Pick<AbstractStorageService, "get" | "has">;
 };

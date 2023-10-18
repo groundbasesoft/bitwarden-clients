@@ -42,7 +42,7 @@ export class ForegroundChromeStorageService extends AbstractChromeStorageService
     const response = firstValueFrom(
       this._backgroundResponses$.pipe(
         filter((message) => message.id === id),
-        map((message) => JSON.parse(message.data) as T) // message data is jsonified
+        map((message) => message.data as T)
       )
     );
 
@@ -53,6 +53,8 @@ export class ForegroundChromeStorageService extends AbstractChromeStorageService
       originator: "foreground",
     });
 
-    return await response;
+    const result = await response;
+
+    return result;
   }
 }

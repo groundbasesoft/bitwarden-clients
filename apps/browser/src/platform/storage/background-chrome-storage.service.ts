@@ -36,7 +36,7 @@ export class BackgroundChromeStorageService extends AbstractChromeStorageService
       port.postMessage({
         id: message.id,
         key: message.key,
-        data: JSON.stringify(response),
+        data: response,
         originator: "background",
       });
     });
