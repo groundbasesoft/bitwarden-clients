@@ -1,20 +1,22 @@
 import { BackgroundChromeStorageService } from "./background-chrome-storage.service";
 import { ForegroundChromeStorageService } from "./foreground-chrome-storage.service";
 import { mockPort } from "./mock-port.spec-util";
+import { portName } from "./port-name";
 
 describe("foreground background chrome storage interaction", () => {
   let foreground: ForegroundChromeStorageService;
   let background: BackgroundChromeStorageService;
-  let port: chrome.runtime.Port;
   const storageArea = chrome.storage.local;
 
   beforeEach(() => {
-    port = mockPort();
+    mockPort(portName(storageArea));
 
-    chrome.runtime.connect = jest.fn().mockReturnValue(port);
-
-    foreground = new ForegroundChromeStorageService(storageArea);
     background = new BackgroundChromeStorageService(storageArea);
+    foreground = new ForegroundChromeStorageService(storageArea);
+  });
+
+  afterEach(() => {
+    jest.resetAllMocks();
   });
 
   test.each(["has", "get"])(

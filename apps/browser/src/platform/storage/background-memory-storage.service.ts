@@ -4,13 +4,22 @@ import { MemoryStoragePortMessage } from "./port-messages";
 import { portName } from "./port-name";
 
 export class BackgroundMemoryStorageService extends MemoryStorageService {
-  private _port: chrome.runtime.Port;
+  private _ports: chrome.runtime.Port[] = [];
 
   constructor() {
     super();
 
-    this._port = chrome.runtime.connect({ name: portName(chrome.storage.session) });
-    this._port.onMessage.addListener(this.onMessageFromForeground.bind(this));
+    chrome.runtime.onConnect.addListener((port) => {
+      if (port.name !== portName(chrome.storage.session)) {
+        return;
+      }
+
+      this._ports.push(port);
+      port.onDisconnect.addListener(() => {
+        this._ports.splice(this._ports.indexOf(port), 1);
+      });
+      port.onMessage.addListener(this.onMessageFromForeground.bind(this));
+    });
     this.updates$.subscribe((update) => {
       this.sendMessage({
         action: "subject_update",
@@ -49,9 +58,11 @@ export class BackgroundMemoryStorageService extends MemoryStorageService {
   }
 
   private async sendMessage(data: Omit<MemoryStoragePortMessage, "originator">) {
-    this._port.postMessage({
-      ...data,
-      originator: "background",
+    this._ports.forEach((port) => {
+      port.postMessage({
+        ...data,
+        originator: "background",
+      });
     });
   }
 }

@@ -3,13 +3,22 @@ import AbstractChromeStorageService from "../services/abstractions/abstract-chro
 import { portName } from "./port-name";
 
 export class BackgroundChromeStorageService extends AbstractChromeStorageService {
-  private _port: chrome.runtime.Port;
+  private _ports: chrome.runtime.Port[] = [];
 
   constructor(chromeStorageArea: chrome.storage.StorageArea) {
     super(chromeStorageArea);
 
-    this._port = chrome.runtime.connect({ name: portName(chromeStorageArea) });
-    this._port.onMessage.addListener(this.onMessageFromForeground.bind(this));
+    chrome.runtime.onConnect.addListener((port) => {
+      if (port.name !== portName(chromeStorageArea)) {
+        return;
+      }
+
+      this._ports.push(port);
+      port.onDisconnect.addListener(() => {
+        this._ports.splice(this._ports.indexOf(port), 1);
+      });
+      port.onMessage.addListener(this.onMessageFromForeground.bind(this));
+    });
   }
 
   private async onMessageFromForeground(message: {
@@ -23,11 +32,13 @@ export class BackgroundChromeStorageService extends AbstractChromeStorageService
     }
 
     const response = await this[message.action](message.key);
-    this._port.postMessage({
-      id: message.id,
-      key: message.key,
-      data: JSON.stringify(response),
-      originator: "background",
+    this._ports.forEach((port) => {
+      port.postMessage({
+        id: message.id,
+        key: message.key,
+        data: JSON.stringify(response),
+        originator: "background",
+      });
     });
   }
 }

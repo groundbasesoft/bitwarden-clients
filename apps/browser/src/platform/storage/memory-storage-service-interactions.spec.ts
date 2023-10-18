@@ -3,19 +3,21 @@ import { trackEmissions } from "@bitwarden/common/../spec/utils";
 import { BackgroundMemoryStorageService } from "./background-memory-storage.service";
 import { ForegroundMemoryStorageService } from "./foreground-memory-storage.service";
 import { mockPort } from "./mock-port.spec-util";
+import { portName } from "./port-name";
 
 describe("foreground background memory storage interaction", () => {
   let foreground: ForegroundMemoryStorageService;
   let background: BackgroundMemoryStorageService;
-  let port: chrome.runtime.Port;
 
   beforeEach(() => {
-    port = mockPort();
+    mockPort(portName(chrome.storage.session));
 
-    chrome.runtime.connect = jest.fn().mockReturnValue(port);
-
-    foreground = new ForegroundMemoryStorageService();
     background = new BackgroundMemoryStorageService();
+    foreground = new ForegroundMemoryStorageService();
+  });
+
+  afterEach(() => {
+    jest.resetAllMocks();
   });
 
   test.each(["has", "get", "getBypassCache"])(
