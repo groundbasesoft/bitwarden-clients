@@ -27,6 +27,7 @@ export class BackgroundChromeStorageService extends AbstractChromeStorageService
       id: message.id,
       key: message.key,
       data: JSON.stringify(response),
+      originator: "background",
     });
   }
 }

@@ -5,6 +5,7 @@ import { Utils } from "@bitwarden/common/platform/misc/utils";
 import { fromChromeEvent } from "../browser/from-chrome-event";
 import AbstractChromeStorageService from "../services/abstractions/abstract-chrome-storage-api.service";
 
+import { ChromeStoragePortMessage } from "./port-messages";
 import { portName } from "./port-name";
 
 /**
@@ -15,14 +16,15 @@ import { portName } from "./port-name";
  */
 export class ForegroundChromeStorageService extends AbstractChromeStorageService {
   private _port: chrome.runtime.Port;
-  private _backgroundResponses$: Observable<{ id: string; key: string; data: string }>;
+  private _backgroundResponses$: Observable<ChromeStoragePortMessage>;
 
   constructor(chromeStorageArea: chrome.storage.StorageArea) {
     super(chromeStorageArea);
 
     this._port = chrome.runtime.connect({ name: portName(chromeStorageArea) });
     this._backgroundResponses$ = fromChromeEvent(this._port.onMessage).pipe(
-      map(([message]) => message)
+      map(([message]) => message),
+      filter((message) => message.originator === "background")
     );
   }
 
