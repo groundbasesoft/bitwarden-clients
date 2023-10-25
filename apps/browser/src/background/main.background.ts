@@ -60,7 +60,6 @@ import { ContainerService } from "@bitwarden/common/platform/services/container.
 import { EncryptServiceImplementation } from "@bitwarden/common/platform/services/cryptography/encrypt.service.implementation";
 import { MultithreadEncryptServiceImplementation } from "@bitwarden/common/platform/services/cryptography/multithread-encrypt.service.implementation";
 import { FileUploadService } from "@bitwarden/common/platform/services/file-upload/file-upload.service";
-import { MemoryStorageService } from "@bitwarden/common/platform/services/memory-storage.service";
 import { SystemService } from "@bitwarden/common/platform/services/system.service";
 import { WebCryptoFunctionService } from "@bitwarden/common/platform/services/web-crypto-function.service";
 import { AvatarUpdateService } from "@bitwarden/common/services/account/avatar-update.service";
@@ -138,13 +137,14 @@ import { BrowserConfigService } from "../platform/services/browser-config.servic
 import { BrowserCryptoService } from "../platform/services/browser-crypto.service";
 import { BrowserEnvironmentService } from "../platform/services/browser-environment.service";
 import { BrowserI18nService } from "../platform/services/browser-i18n.service";
-import BrowserLocalStorageService from "../platform/services/browser-local-storage.service";
 import BrowserMessagingPrivateModeBackgroundService from "../platform/services/browser-messaging-private-mode-background.service";
 import BrowserMessagingService from "../platform/services/browser-messaging.service";
 import BrowserPlatformUtilsService from "../platform/services/browser-platform-utils.service";
 import { BrowserStateService } from "../platform/services/browser-state.service";
 import { KeyGenerationService } from "../platform/services/key-generation.service";
 import { LocalBackedSessionStorageService } from "../platform/services/local-backed-session-storage.service";
+import { BackgroundChromeStorageService } from "../platform/storage/background-chrome-storage.service";
+import { BackgroundMemoryStorageService } from "../platform/storage/background-memory-storage.service";
 import { PopupUtilsService } from "../popup/services/popup-utils.service";
 import { BrowserSendService } from "../services/browser-send.service";
 import { BrowserSettingsService } from "../services/browser-settings.service";
@@ -273,15 +273,15 @@ export default class MainBackground {
       : new BrowserMessagingService();
     this.logService = new ConsoleLogService(false);
     this.cryptoFunctionService = new WebCryptoFunctionService(window);
-    this.storageService = new BrowserLocalStorageService();
-    this.secureStorageService = new BrowserLocalStorageService();
+    this.storageService = new BackgroundChromeStorageService(chrome.storage.local);
+    this.secureStorageService = new BackgroundChromeStorageService(chrome.storage.local);
     this.memoryStorageService =
       BrowserApi.manifestVersion === 3
         ? new LocalBackedSessionStorageService(
             new EncryptServiceImplementation(this.cryptoFunctionService, this.logService, false),
             new KeyGenerationService(this.cryptoFunctionService)
           )
-        : new MemoryStorageService();
+        : new BackgroundMemoryStorageService();
     this.accountService = new AccountServiceImplementation(this.messagingService, this.logService);
     this.stateService = new BrowserStateService(
       this.storageService,

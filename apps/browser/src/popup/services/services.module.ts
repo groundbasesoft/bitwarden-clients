@@ -102,6 +102,8 @@ import { BrowserI18nService } from "../../platform/services/browser-i18n.service
 import BrowserMessagingPrivateModePopupService from "../../platform/services/browser-messaging-private-mode-popup.service";
 import BrowserMessagingService from "../../platform/services/browser-messaging.service";
 import { BrowserStateService } from "../../platform/services/browser-state.service";
+import { ForegroundChromeStorageService } from "../../platform/storage/foreground-chrome-storage.service";
+import { ForegroundMemoryStorageService } from "../../platform/storage/foreground-memory-storage.service";
 import { BrowserSendService } from "../../services/browser-send.service";
 import { BrowserSettingsService } from "../../services/browser-settings.service";
 import { FilePopoutUtilsService } from "../../tools/popup/services/file-popout-utils.service";
@@ -360,7 +362,9 @@ function getBgService<T>(service: keyof MainBackground) {
     },
     {
       provide: AbstractStorageService,
-      useFactory: getBgService<AbstractStorageService>("storageService"),
+      useFactory: () => {
+        return new ForegroundChromeStorageService(chrome.storage.local);
+      },
       deps: [],
     },
     { provide: AppIdService, useFactory: getBgService<AppIdService>("appIdService"), deps: [] },
@@ -442,12 +446,15 @@ function getBgService<T>(service: keyof MainBackground) {
     },
     {
       provide: SECURE_STORAGE,
-      useFactory: getBgService<AbstractStorageService>("secureStorageService"),
+      useFactory: () => {
+        return new ForegroundChromeStorageService(chrome.storage.local);
+      },
       deps: [],
     },
     {
       provide: MEMORY_STORAGE,
-      useFactory: getBgService<AbstractStorageService>("memoryStorageService"),
+      useClass: ForegroundMemoryStorageService,
+      deps: [],
     },
     {
       provide: StateServiceAbstraction,
