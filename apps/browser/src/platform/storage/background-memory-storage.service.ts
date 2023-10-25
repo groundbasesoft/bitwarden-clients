@@ -19,6 +19,11 @@ export class BackgroundMemoryStorageService extends MemoryStorageService {
         this._ports.splice(this._ports.indexOf(port), 1);
       });
       port.onMessage.addListener(this.onMessageFromForeground.bind(this));
+      // Initialize the new memory storage service with existing data
+      this.sendMessage({
+        action: "initialization",
+        data: Array.from(this.store.entries()),
+      });
     });
     this.updates$.subscribe((update) => {
       this.sendMessage({

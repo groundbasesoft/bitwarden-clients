@@ -1,7 +1,8 @@
-import { Observable, filter, firstValueFrom, map } from "rxjs";
+import { Observable, Subject, filter, firstValueFrom, map } from "rxjs";
 
 import {
   AbstractMemoryStorageService,
+  StorageUpdate,
   StorageUpdateType,
 } from "@bitwarden/common/platform/abstractions/storage.service";
 import { Utils } from "@bitwarden/common/platform/misc/utils";
@@ -14,6 +15,11 @@ import { portName } from "./port-name";
 export class ForegroundMemoryStorageService extends AbstractMemoryStorageService {
   private _port: chrome.runtime.Port;
   private _backgroundResponses$: Observable<MemoryStoragePortMessage>;
+  private updatesSubject = new Subject<StorageUpdate>();
+
+  get updates$(): Observable<StorageUpdate> {
+    return this.updatesSubject.asObservable();
+  }
 
   constructor() {
     super();
@@ -25,14 +31,28 @@ export class ForegroundMemoryStorageService extends AbstractMemoryStorageService
     );
 
     this._backgroundResponses$
-      .pipe(filter((message) => message.action === "subject_update"))
+      .pipe(
+        filter(
+          (message) => message.action === "subject_update" || message.action === "initialization"
+        )
+      )
       .subscribe((message) => {
-        const update = message.data as {
-          key: string;
-          value: unknown;
-          updateType: StorageUpdateType;
-        };
-        this.updatesSubject.next(update);
+        switch (message.action) {
+          case "initialization":
+            this.handleInitialize(message.data as [string, unknown][]); // Map entries as array
+            break;
+          case "subject_update":
+            this.handleSubjectUpdate(
+              message.data as {
+                key: string;
+                value: unknown;
+                updateType: StorageUpdateType;
+              }
+            );
+            break;
+          default:
+            throw new Error(`Unknown action: ${message.action}`);
+        }
       });
   }
 
@@ -77,10 +97,25 @@ export class ForegroundMemoryStorageService extends AbstractMemoryStorageService
     return result;
   }
 
-  private sendMessage(message: Omit<MemoryStoragePortMessage, "originator">) {
+  private sendMessage(data: Omit<MemoryStoragePortMessage, "originator">) {
     this._port.postMessage({
-      ...message,
+      ...data,
       originator: "foreground",
     });
+  }
+
+  private handleInitialize(data: [string, unknown][]) {
+    // TODO: this isn't a save, but we don't have a better indicator for this
+    data.forEach(([key, value]) => {
+      this.updatesSubject.next({ key, value, updateType: "save" });
+    });
+  }
+
+  private handleSubjectUpdate(data: {
+    key: string;
+    value: unknown;
+    updateType: StorageUpdateType;
+  }) {
+    this.updatesSubject.next(data);
   }
 }

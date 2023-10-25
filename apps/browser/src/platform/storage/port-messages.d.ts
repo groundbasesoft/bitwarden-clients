@@ -10,7 +10,8 @@ type MemoryStoragePortMessage = {
   originator: "foreground" | "background";
   action?:
     | keyof Pick<AbstractMemoryStorageService, "get" | "getBypassCache" | "has" | "save" | "remove">
-    | "subject_update";
+    | "subject_update"
+    | "initialization";
 };
 
 type ChromeStoragePortMessage = {
