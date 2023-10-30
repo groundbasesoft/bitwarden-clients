@@ -62,6 +62,9 @@ import { MultithreadEncryptServiceImplementation } from "@bitwarden/common/platf
 import { FileUploadService } from "@bitwarden/common/platform/services/file-upload/file-upload.service";
 import { SystemService } from "@bitwarden/common/platform/services/system.service";
 import { WebCryptoFunctionService } from "@bitwarden/common/platform/services/web-crypto-function.service";
+import { GlobalStateProvider } from "@bitwarden/common/platform/state";
+// eslint-disable-next-line import/no-restricted-paths -- We need the implementation to inject, but generally this should not be accessed
+import { DefaultGlobalStateProvider } from "@bitwarden/common/platform/state/implementations/default-global-state.provider";
 import { AvatarUpdateService } from "@bitwarden/common/services/account/avatar-update.service";
 import { ApiService } from "@bitwarden/common/services/api.service";
 import { AuditService } from "@bitwarden/common/services/audit.service";
@@ -228,6 +231,7 @@ export default class MainBackground {
   popupUtilsService: PopupUtilsService;
   browserPopoutWindowService: BrowserPopoutWindowService;
   accountService: AccountServiceAbstraction;
+  globalStateProvider: GlobalStateProvider;
 
   // Passed to the popup for Safari to workaround issues with theming, downloading, etc.
   backgroundWindow = window;
@@ -282,7 +286,15 @@ export default class MainBackground {
             new KeyGenerationService(this.cryptoFunctionService)
           )
         : new BackgroundMemoryStorageService();
-    this.accountService = new AccountServiceImplementation(this.messagingService, this.logService);
+    this.globalStateProvider = new DefaultGlobalStateProvider(
+      this.memoryStorageService,
+      this.storageService
+    );
+    this.accountService = new AccountServiceImplementation(
+      this.messagingService,
+      this.logService,
+      this.globalStateProvider
+    );
     this.stateService = new BrowserStateService(
       this.storageService,
       this.secureStorageService,
