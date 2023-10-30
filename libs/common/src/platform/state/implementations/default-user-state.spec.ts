@@ -1,5 +1,9 @@
+/**
+ * need to update test environment so trackEmissions works appropriately
+ * @jest-environment ../shared/test.environment.ts
+ */
 import { any, mock } from "jest-mock-extended";
-import { BehaviorSubject, firstValueFrom, timeout } from "rxjs";
+import { BehaviorSubject, firstValueFrom, of, timeout } from "rxjs";
 import { Jsonify } from "type-fest";
 
 import { trackEmissions } from "../../../../spec";
@@ -232,5 +236,91 @@ describe("DefaultUserState", () => {
     // when there becomes no active user, if we don't want that to emit
     // this value is correct.
     expect(emissions).toHaveLength(2);
+  });
+
+  describe("update", () => {
+    const newData = { date: new Date(), array: ["test"] };
+    beforeEach(() => {
+      changeActiveUser("1");
+    });
+
+    it("should save on update", async () => {
+      const result = await userState.update((state, dependencies) => {
+        return newData;
+      });
+
+      expect(diskStorageService.mock.save).toHaveBeenCalledTimes(1);
+      expect(result).toEqual(newData);
+    });
+
+    it("should emit once per update", async () => {
+      const emissions = trackEmissions(userState.state$);
+
+      await userState.update((state, dependencies) => {
+        return newData;
+      });
+
+      expect(emissions).toEqual([
+        null, // initial value
+        newData,
+      ]);
+    });
+
+    it("should provide combined dependencies", async () => {
+      const emissions = trackEmissions(userState.state$);
+      const combinedDependencies = { date: new Date() };
+
+      await userState.update(
+        (state, dependencies) => {
+          expect(dependencies).toEqual(combinedDependencies);
+          return newData;
+        },
+        {
+          combineLatestWith: of(combinedDependencies),
+        }
+      );
+
+      expect(emissions).toEqual([
+        null, // initial value
+        newData,
+      ]);
+    });
+
+    it("should not update if shouldUpdate returns false", async () => {
+      const emissions = trackEmissions(userState.state$);
+
+      const result = await userState.update(
+        (state, dependencies) => {
+          return newData;
+        },
+        {
+          shouldUpdate: () => false,
+        }
+      );
+
+      expect(diskStorageService.mock.save).not.toHaveBeenCalled();
+      expect(result).toBe(undefined);
+      expect(emissions).toEqual([null]);
+    });
+
+    it("should provide the current state to the update callback", async () => {
+      const emissions = trackEmissions(userState.state$);
+      // Seed with interesting data
+      const initialData = { date: new Date(2020, 0), array: ["value1", "value2"] };
+      await userState.update((state, dependencies) => {
+        return initialData;
+      });
+
+      await userState.update((state, dependencies) => {
+        expect(state).toEqual(initialData);
+        return newData;
+      });
+
+      expect(emissions).toEqual([
+        null, // Initial value
+        initialData,
+        newData,
+      ]);
+    });
   });
 });

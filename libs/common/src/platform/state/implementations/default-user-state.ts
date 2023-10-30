@@ -9,6 +9,7 @@ import {
   firstValueFrom,
   combineLatestWith,
   filter,
+  timeout,
 } from "rxjs";
 import { Jsonify } from "type-fest";
 
@@ -20,6 +21,7 @@ import { userKeyBuilder } from "../../misc/key-builders";
 import { DerivedStateDefinition } from "../derived-state-definition";
 import { DerivedUserState } from "../derived-user-state";
 import { KeyDefinition } from "../key-definition";
+import { StateUpdateOptions, populateOptionsWithDefault } from "../state-update-options";
 import { UserState } from "../user-state";
 
 const FAKE_DEFAULT = Symbol("fakeDefault");
@@ -94,23 +96,50 @@ export class DefaultUserState<T> implements UserState<T> {
       .pipe(filter<T>((value) => value != FAKE_DEFAULT));
   }
 
-  async update(configureState: (state: T) => T): Promise<T> {
+  async update<TCombine>(
+    configureState: (state: T, dependency: TCombine) => T,
+    options: StateUpdateOptions<T, TCombine> = {}
+  ): Promise<T> {
+    options = populateOptionsWithDefault(options);
     const key = await this.createKey();
     const currentState = await this.getGuaranteedState(key);
-    const newState = configureState(currentState);
+    const combinedDependencies =
+      options.combineLatestWith != null
+        ? await firstValueFrom(options.combineLatestWith.pipe(timeout(options.msTimeout)))
+        : null;
+
+    if (!options.shouldUpdate(currentState, combinedDependencies)) {
+      return;
+    }
+
+    const newState = configureState(currentState, combinedDependencies);
     await this.saveToStorage(key, newState);
     return newState;
   }
 
-  async updateFor(userId: UserId, configureState: (state: T) => T): Promise<T> {
+  async updateFor<TCombine>(
+    userId: UserId,
+    configureState: (state: T, dependencies: TCombine) => T,
+    options: StateUpdateOptions<T, TCombine> = {}
+  ): Promise<T> {
     if (userId == null) {
       throw new Error("Attempting to update user state, but no userId has been supplied.");
     }
+    options = populateOptionsWithDefault(options);
 
     const key = userKeyBuilder(userId, this.keyDefinition);
     const currentStore = await this.chosenStorageLocation.get<Jsonify<T>>(key);
     const currentState = this.keyDefinition.deserializer(currentStore);
-    const newState = configureState(currentState);
+    const combinedDependencies =
+      options.combineLatestWith != null
+        ? await firstValueFrom(options.combineLatestWith.pipe(timeout(options.msTimeout)))
+        : null;
+
+    if (!options.shouldUpdate(currentState, combinedDependencies)) {
+      return;
+    }
+
+    const newState = configureState(currentState, combinedDependencies);
     await this.saveToStorage(key, newState);
 
     return newState;

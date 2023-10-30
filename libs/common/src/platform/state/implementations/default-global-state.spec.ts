@@ -3,6 +3,7 @@
  * @jest-environment ../shared/test.environment.ts
  */
 
+import { of } from "rxjs";
 import { Jsonify } from "type-fest";
 
 import { trackEmissions } from "../../../../spec";
@@ -39,6 +40,7 @@ const globalKey = globalKeyBuilder(testKeyDefinition);
 describe("DefaultGlobalState", () => {
   let diskStorageService: FakeStorageService;
   let globalState: DefaultGlobalState<TestState>;
+  const newData = { date: new Date() };
 
   beforeEach(() => {
     diskStorageService = new FakeStorageService();
@@ -51,7 +53,6 @@ describe("DefaultGlobalState", () => {
 
   it("should emit when storage updates", async () => {
     const emissions = trackEmissions(globalState.state$);
-    const newData = { date: new Date() };
     await diskStorageService.save(globalKey, newData);
 
     expect(emissions).toEqual([
@@ -63,7 +64,6 @@ describe("DefaultGlobalState", () => {
 
   it("should not emit when update key does not match", async () => {
     const emissions = trackEmissions(globalState.state$);
-    const newData = { date: new Date() };
     await diskStorageService.save("wrong_key", newData);
 
     expect(emissions).toEqual(
@@ -73,27 +73,84 @@ describe("DefaultGlobalState", () => {
     );
   });
 
-  it("should save on update", async () => {
-    const newData = { date: new Date() };
-    const result = await globalState.update((state) => {
-      return newData;
+  describe("update", () => {
+    it("should save on update", async () => {
+      const result = await globalState.update((state) => {
+        return newData;
+      });
+
+      expect(diskStorageService.mock.save).toHaveBeenCalledTimes(1);
+      expect(result).toEqual(newData);
     });
 
-    expect(diskStorageService.mock.save).toHaveBeenCalledTimes(1);
-    expect(result).toEqual(newData);
-  });
+    it("should emit once per update", async () => {
+      const emissions = trackEmissions(globalState.state$);
 
-  it("should emit once per update", async () => {
-    const emissions = trackEmissions(globalState.state$);
-    const newData = { date: new Date() };
+      await globalState.update((state) => {
+        return newData;
+      });
 
-    await globalState.update((state) => {
-      return newData;
+      expect(emissions).toEqual([
+        null, // Initial value
+        newData,
+      ]);
     });
 
-    expect(emissions).toEqual([
-      null, // Initial value
-      newData,
-    ]);
+    it("should provided combined dependencies", async () => {
+      const emissions = trackEmissions(globalState.state$);
+      const combinedDependencies = { date: new Date() };
+
+      await globalState.update(
+        (state, dependencies) => {
+          expect(dependencies).toEqual(combinedDependencies);
+          return newData;
+        },
+        {
+          combineLatestWith: of(combinedDependencies),
+        }
+      );
+
+      expect(emissions).toEqual([
+        null, // Initial value
+        newData,
+      ]);
+    });
+
+    it("should not update if shouldUpdate returns false", async () => {
+      const emissions = trackEmissions(globalState.state$);
+
+      const result = await globalState.update(
+        (state) => {
+          return newData;
+        },
+        {
+          shouldUpdate: () => false,
+        }
+      );
+
+      expect(diskStorageService.mock.save).not.toHaveBeenCalled();
+      expect(emissions).toEqual([null]); // Initial value
+      expect(result).toBeUndefined();
+    });
+
+    it("should provide the update callback with the current State", async () => {
+      const emissions = trackEmissions(globalState.state$);
+      // Seed with interesting data
+      const initialData = { date: new Date(2020, 1, 1) };
+      await globalState.update((state, dependencies) => {
+        return initialData;
+      });
+
+      await globalState.update((state) => {
+        expect(state).toEqual(initialData);
+        return newData;
+      });
+
+      expect(emissions).toEqual([
+        null, // Initial value
+        initialData,
+        newData,
+      ]);
+    });
   });
 });

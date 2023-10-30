@@ -1,10 +1,21 @@
-import { BehaviorSubject, Observable, defer, filter, map, shareReplay, tap } from "rxjs";
+import {
+  BehaviorSubject,
+  Observable,
+  defer,
+  filter,
+  firstValueFrom,
+  map,
+  shareReplay,
+  tap,
+  timeout,
+} from "rxjs";
 import { Jsonify } from "type-fest";
 
 import { AbstractStorageService } from "../../abstractions/storage.service";
 import { globalKeyBuilder } from "../../misc/key-builders";
 import { GlobalState } from "../global-state";
 import { KeyDefinition } from "../key-definition";
+import { StateUpdateOptions, populateOptionsWithDefault } from "../state-update-options";
 
 export class DefaultGlobalState<T> implements GlobalState<T> {
   private storageKey: string;
@@ -46,10 +57,23 @@ export class DefaultGlobalState<T> implements GlobalState<T> {
     });
   }
 
-  async update(configureState: (state: T) => T): Promise<T> {
+  async update<TCombine>(
+    configureState: (state: T, dependency: TCombine) => T,
+    options: StateUpdateOptions<T, TCombine> = {}
+  ): Promise<T> {
+    options = populateOptionsWithDefault(options);
     await this.seededPromise;
     const currentState = this.stateSubject.getValue();
-    const newState = configureState(currentState);
+    const combinedDependencies =
+      options.combineLatestWith != null
+        ? await firstValueFrom(options.combineLatestWith.pipe(timeout(options.msTimeout)))
+        : null;
+
+    if (!options.shouldUpdate(currentState, combinedDependencies)) {
+      return;
+    }
+
+    const newState = configureState(currentState, combinedDependencies);
     await this.chosenLocation.save(this.storageKey, newState);
     return newState;
   }
