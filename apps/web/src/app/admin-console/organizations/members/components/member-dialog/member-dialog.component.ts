@@ -35,7 +35,8 @@ import {
 } from "../../../shared/components/access-selector";
 
 import { commaSeparatedEmails } from "./validators/comma-separated-emails.validator";
-import { freeOrgSeatLimitReachedValidator } from "./validators/free-org-inv-limit-reached.validator";
+import { orgWithoutAdditionalSeatLimitReachedWithUpgradePathValidator } from "./validators/org-without-additional-seat-limit-reached-with-upgrade-path.validator";
+import { orgWithoutAdditionalSeatLimitReachedWithoutUpgradePathValidator } from "./validators/org-without-additional-seat-limit-reached-without-upgrade-path.validator";
 
 export enum MemberDialogTab {
   Role = 0,
@@ -172,10 +173,15 @@ export class MemberDialogComponent implements OnInit, OnDestroy {
         const emailsControlValidators = [
           Validators.required,
           commaSeparatedEmails,
-          freeOrgSeatLimitReachedValidator(
+          orgWithoutAdditionalSeatLimitReachedWithUpgradePathValidator(
             this.organization,
             this.params.allOrganizationUserEmails,
             this.i18nService.t("subscriptionFreePlan", organization.seats)
+          ),
+          orgWithoutAdditionalSeatLimitReachedWithoutUpgradePathValidator(
+            this.organization,
+            this.params.allOrganizationUserEmails,
+            this.i18nService.t("subscriptionFamiliesPlan", organization.seats)
           ),
         ];
 

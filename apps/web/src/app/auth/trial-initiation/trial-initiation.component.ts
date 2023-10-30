@@ -144,7 +144,7 @@ export class TrialInitiationComponent implements OnInit, OnDestroy {
           this.plan = PlanType.FamiliesAnnually;
           this.product = ProductType.Families;
         } else if (this.org === ValidOrgParams.teams) {
-          this.plan = PlanType.TeamsAnnually;
+          this.plan = PlanType.TeamsStarter;
           this.product = ProductType.Teams;
         } else if (this.org === ValidOrgParams.enterprise) {
           this.plan = PlanType.EnterpriseAnnually;
