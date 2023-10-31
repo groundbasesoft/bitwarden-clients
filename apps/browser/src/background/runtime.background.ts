@@ -1,4 +1,6 @@
 import { NotificationsService } from "@bitwarden/common/abstractions/notifications.service";
+import { AuthenticationStatus } from "@bitwarden/common/auth/enums/authentication-status";
+import { ForceResetPasswordReason } from "@bitwarden/common/auth/models/domain/force-reset-password-reason";
 import { FeatureFlag } from "@bitwarden/common/enums/feature-flag.enum";
 import { ConfigServiceAbstraction } from "@bitwarden/common/platform/abstractions/config/config.service.abstraction";
 import { I18nService } from "@bitwarden/common/platform/abstractions/i18n.service";
@@ -319,6 +321,27 @@ export default class RuntimeBackground {
         return await this.abortManager.runWithAbortController(msg.requestId, (abortController) =>
           this.main.fido2ClientService.assertCredential(msg.data, sender.tab, abortController)
         );
+      case "switchAccount": {
+        if (msg.userId != null) {
+          await this.stateService.setActiveUser(msg.userId);
+        }
+
+        const status = await this.main.authService.getAuthStatus(msg.userId);
+        const forcePasswordReset =
+          (await this.main.stateService.getForcePasswordResetReason({ userId: msg.userId })) !=
+          ForceResetPasswordReason.None;
+
+        if (status === AuthenticationStatus.Locked) {
+          this.messagingService.send("locked", { userId: msg.userId });
+        } else if (forcePasswordReset) {
+          this.messagingService.send("forcePasswordReset", { userId: msg.userId });
+        } else {
+          this.messagingService.send("unlocked", { userId: msg.userId });
+          await this.main.syncService.fullSync(true);
+          this.messagingService.send("switchAccountFinish", { userId: msg.userId });
+        }
+        break;
+      }
     }
   }
 
