@@ -58,7 +58,7 @@ export class DefaultGlobalState<T> implements GlobalState<T> {
   }
 
   async update<TCombine>(
-    configureState: (state: T, dependency: TCombine) => T,
+    configureState: (state: T, dependency: TCombine) => T | Promise<T>,
     options: StateUpdateOptions<T, TCombine> = {}
   ): Promise<T> {
     options = populateOptionsWithDefault(options);
@@ -73,7 +73,10 @@ export class DefaultGlobalState<T> implements GlobalState<T> {
       return;
     }
 
-    const newState = configureState(currentState, combinedDependencies);
+    let newState = configureState(currentState, combinedDependencies);
+    if (newState instanceof Promise) {
+      newState = await newState;
+    }
     await this.chosenLocation.save(this.storageKey, newState);
     return newState;
   }

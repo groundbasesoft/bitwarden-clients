@@ -63,6 +63,7 @@ import { GlobalState } from "@bitwarden/common/platform/models/domain/global-sta
 import { ConfigService } from "@bitwarden/common/platform/services/config/config.service";
 import { ConsoleLogService } from "@bitwarden/common/platform/services/console-log.service";
 import { ContainerService } from "@bitwarden/common/platform/services/container.service";
+import { GlobalStateProvider } from "@bitwarden/common/platform/state";
 import { SearchService } from "@bitwarden/common/services/search.service";
 import { PasswordGenerationServiceAbstraction } from "@bitwarden/common/tools/generator/password";
 import { UsernameGenerationServiceAbstraction } from "@bitwarden/common/tools/generator/username";
@@ -463,7 +464,8 @@ function getBgService<T>(service: keyof MainBackground) {
         secureStorageService: AbstractStorageService,
         memoryStorageService: AbstractMemoryStorageService,
         logService: LogServiceAbstraction,
-        accountService: AccountServiceAbstraction
+        accountService: AccountServiceAbstraction,
+        globalStateProvider: GlobalStateProvider
       ) => {
         return new BrowserStateService(
           storageService,
@@ -471,7 +473,8 @@ function getBgService<T>(service: keyof MainBackground) {
           memoryStorageService,
           logService,
           new StateFactory(GlobalState, Account),
-          accountService
+          accountService,
+          globalStateProvider
         );
       },
       deps: [
@@ -480,6 +483,7 @@ function getBgService<T>(service: keyof MainBackground) {
         MEMORY_STORAGE,
         LogServiceAbstraction,
         AccountServiceAbstraction,
+        GlobalStateProvider,
       ],
     },
     {

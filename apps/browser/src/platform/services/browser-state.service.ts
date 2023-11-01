@@ -1,5 +1,3 @@
-import { BehaviorSubject } from "rxjs";
-
 import { AccountService } from "@bitwarden/common/auth/abstractions/account.service";
 import { LogService } from "@bitwarden/common/platform/abstractions/log.service";
 import {
@@ -10,31 +8,20 @@ import { StateFactory } from "@bitwarden/common/platform/factories/state-factory
 import { GlobalState } from "@bitwarden/common/platform/models/domain/global-state";
 import { StorageOptions } from "@bitwarden/common/platform/models/domain/storage-options";
 import { StateService as BaseStateService } from "@bitwarden/common/platform/services/state.service";
+import { GlobalStateProvider } from "@bitwarden/common/platform/state";
 
 import { Account } from "../../models/account";
 import { BrowserComponentState } from "../../models/browserComponentState";
 import { BrowserGroupingsComponentState } from "../../models/browserGroupingsComponentState";
 import { BrowserSendComponentState } from "../../models/browserSendComponentState";
 import { BrowserApi } from "../browser/browser-api";
-import { browserSession, sessionSync } from "../decorators/session-sync-observable";
 
 import { BrowserStateService as StateServiceAbstraction } from "./abstractions/browser-state.service";
 
-@browserSession
 export class BrowserStateService
   extends BaseStateService<GlobalState, Account>
   implements StateServiceAbstraction
 {
-  @sessionSync({
-    initializer: Account.fromJSON as any, // TODO: Remove this any when all any types are removed from Account
-    initializeAs: "record",
-  })
-  protected accountsSubject: BehaviorSubject<{ [userId: string]: Account }>;
-  @sessionSync({ initializer: (s: string) => s })
-  protected activeAccountSubject: BehaviorSubject<string>;
-  @sessionSync({ initializer: (b: boolean) => b })
-  protected activeAccountUnlockedSubject: BehaviorSubject<boolean>;
-
   protected accountDeserializer = Account.fromJSON;
 
   constructor(
@@ -44,6 +31,7 @@ export class BrowserStateService
     logService: LogService,
     stateFactory: StateFactory<GlobalState, Account>,
     accountService: AccountService,
+    globalStateProvider: GlobalStateProvider,
     useAccountCache = true
   ) {
     super(
@@ -53,6 +41,7 @@ export class BrowserStateService
       logService,
       stateFactory,
       accountService,
+      globalStateProvider,
       useAccountCache
     );
 
@@ -60,10 +49,11 @@ export class BrowserStateService
     // the background page that can get out of sync. We need to work out the
     // best way to handle caching with multiple instances of the state service.
     if (useAccountCache) {
-      BrowserApi.storageChangeListener((changes, namespace) => {
+      BrowserApi.storageChangeListener(async (changes, namespace) => {
         if (namespace === "local") {
           for (const key of Object.keys(changes)) {
-            if (key !== "accountActivity" && this.accountDiskCache.value[key]) {
+            const cache = await this.diskCache();
+            if (key !== "accountActivity" && cache[key]) {
               this.deleteDiskCache(key);
             }
           }

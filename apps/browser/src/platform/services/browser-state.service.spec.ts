@@ -1,3 +1,5 @@
+import { FakeGlobalState } from "@bitwarden/common/../spec/fake-state";
+import { FakeGlobalStateProvider } from "@bitwarden/common/../spec/fake-state-provider";
 import { mock, MockProxy } from "jest-mock-extended";
 
 import { AccountService } from "@bitwarden/common/auth/abstractions/account.service";
@@ -29,6 +31,8 @@ describe("Browser State Service", () => {
   let stateFactory: MockProxy<StateFactory<GlobalState, Account>>;
   let useAccountCache: boolean;
   let accountService: MockProxy<AccountService>;
+  let globalStateProvider: FakeGlobalStateProvider;
+  let memoryState: FakeGlobalState<State<GlobalState, Account>>;
 
   let state: State<GlobalState, Account>;
   const userId = "userId";
@@ -41,6 +45,7 @@ describe("Browser State Service", () => {
     logService = mock();
     stateFactory = mock();
     accountService = mock();
+    globalStateProvider = new FakeGlobalStateProvider();
     // turn off account cache for tests
     useAccountCache = false;
 
@@ -66,8 +71,12 @@ describe("Browser State Service", () => {
         logService,
         stateFactory,
         accountService,
+        globalStateProvider,
         useAccountCache
       );
+
+      memoryState = globalStateProvider.getFake(sut["MEMORY_STATE_DEFINITION"]);
+      memoryState.stateSubject.next(state);
     });
 
     describe("getBrowserGroupingComponentState", () => {

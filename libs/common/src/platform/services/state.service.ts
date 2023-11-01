@@ -1,4 +1,13 @@
-import { BehaviorSubject, concatMap } from "rxjs";
+import {
+  BehaviorSubject,
+  Subject,
+  combineLatestWith,
+  concatMap,
+  distinctUntilChanged,
+  firstValueFrom,
+  map,
+  timeout,
+} from "rxjs";
 import { Jsonify, JsonValue } from "type-fest";
 
 import { EncryptedOrganizationKeyData } from "../../admin-console/models/data/encrypted-organization-key.data";
@@ -44,6 +53,7 @@ import {
   AbstractStorageService,
 } from "../abstractions/storage.service";
 import { StateFactory } from "../factories/state-factory";
+import { delayUntil } from "../misc/delay-until";
 import { Utils } from "../misc/utils";
 import { ServerConfigData } from "../models/data/server-config.data";
 import {
@@ -63,6 +73,12 @@ import {
   SymmetricCryptoKey,
   UserKey,
 } from "../models/domain/symmetric-crypto-key";
+import {
+  GlobalStateProvider,
+  KeyDefinition,
+  STATE_MEMORY,
+  GlobalState as GlobalStateObservable,
+} from "../state";
 
 const keys = {
   state: "state",
@@ -90,22 +106,46 @@ export class StateService<
   TAccount extends Account = Account
 > implements StateServiceAbstraction<TAccount>
 {
-  protected accountsSubject = new BehaviorSubject<{ [userId: string]: TAccount }>({});
-  accounts$ = this.accountsSubject.asObservable();
+  private readonly pushAccountsSubject = new Subject<void>();
+  get accounts$() {
+    return this.memoryState.state$.pipe(
+      map((state) => state.accounts ?? {}),
+      delayUntil(this.pushAccountsSubject)
+    );
+  }
 
-  protected activeAccountSubject = new BehaviorSubject<string | null>(null);
-  activeAccount$ = this.activeAccountSubject.asObservable();
+  get activeAccount$() {
+    return this.memoryState.state$.pipe(
+      map((state) => state?.activeUserId),
+      distinctUntilChanged()
+    );
+  }
 
-  protected activeAccountUnlockedSubject = new BehaviorSubject<boolean>(false);
-  activeAccountUnlocked$ = this.activeAccountUnlockedSubject.asObservable();
+  get activeAccountUnlocked$() {
+    return this.activeAccountUnlockedState.state$;
+  }
 
   private hasBeenInited = false;
   private isRecoveredSession = false;
 
-  protected accountDiskCache = new BehaviorSubject<Record<string, TAccount>>({});
-
   // default account serializer, must be overridden by child class
   protected accountDeserializer = Account.fromJSON as (json: Jsonify<TAccount>) => TAccount;
+  private get MEMORY_STATE_DEFINITION() {
+    return new KeyDefinition<State<TGlobalState, TAccount>>(STATE_MEMORY, "state", (s) =>
+      State.fromJSON(s, this.accountDeserializer)
+    );
+  }
+  private get DISK_CACHE_DEFINITION() {
+    return KeyDefinition.record(STATE_MEMORY, "diskCache", this.accountDeserializer);
+  }
+
+  private get ACTIVE_ACCOUNT_UNLOCKED_DEFINITION() {
+    return new KeyDefinition<boolean>(STATE_MEMORY, "activeAccountUnlocked", (s) => s);
+  }
+
+  private memoryState: GlobalStateObservable<State<TGlobalState, TAccount>>;
+  private diskCacheState: GlobalStateObservable<Record<string, TAccount>>;
+  private activeAccountUnlockedState: GlobalStateObservable<boolean>;
 
   constructor(
     protected storageService: AbstractStorageService,
@@ -114,21 +154,34 @@ export class StateService<
     protected logService: LogService,
     protected stateFactory: StateFactory<TGlobalState, TAccount>,
     protected accountService: AccountService,
+    protected globalStateProvider: GlobalStateProvider,
     protected useAccountCache: boolean = true
   ) {
+    this.memoryState = globalStateProvider.get(this.MEMORY_STATE_DEFINITION);
+    this.activeAccountUnlockedState = globalStateProvider.get(
+      this.ACTIVE_ACCOUNT_UNLOCKED_DEFINITION
+    );
+    if (this.useAccountCache) {
+      this.diskCacheState = globalStateProvider.get(this.DISK_CACHE_DEFINITION);
+    }
     // If the account gets changed, verify the new account is unlocked
-    this.activeAccountSubject
+    this.activeAccount$
       .pipe(
-        concatMap(async (userId) => {
-          if (userId == null && this.activeAccountUnlockedSubject.getValue() == false) {
+        combineLatestWith(this.activeAccountUnlockedState.state$),
+        concatMap(async ([userId, unlocked]) => {
+          if (userId == null && !unlocked) {
             return;
           } else if (userId == null) {
-            this.activeAccountUnlockedSubject.next(false);
+            await this.activeAccountUnlockedState.update(() => false);
+          } else {
+            // FIXME: This should be refactored into AuthService or a similar service,
+            //  as checking for the existence of the crypto key is a low level
+            //  implementation detail.
+            const userKey = await this.getUserKey({ userId });
+            await this.activeAccountUnlockedState.update(() => {
+              return userKey != null;
+            });
           }
-          // FIXME: This should be refactored into AuthService or a similar service,
-          //  as checking for the existence of the crypto key is a low level
-          //  implementation detail.
-          this.activeAccountUnlockedSubject.next((await this.getUserKey()) != null);
         })
       )
       .subscribe();
@@ -171,11 +224,10 @@ export class StateService<
         state.activeUserId = storedActiveUser;
       }
       await this.pushAccounts();
-      this.activeAccountSubject.next(state.activeUserId);
       // TODO: Temporary update to avoid routing all account status changes through account service for now.
       // account service tracks logged out accounts, but State service does not, so we need to add the active account
       // if it's not in the accounts list.
-      if (state.activeUserId != null && this.accountsSubject.value[state.activeUserId] == null) {
+      if (state.activeUserId != null && state.accounts[state.activeUserId] == null) {
         const activeDiskAccount = await this.getAccountFromDisk({ userId: state.activeUserId });
         this.accountService.addAccount(state.activeUserId as UserId, {
           name: activeDiskAccount.profile.name,
@@ -228,7 +280,6 @@ export class StateService<
       email: account.profile.email,
     });
     await this.setActiveUser(account.profile.userId);
-    this.activeAccountSubject.next(account.profile.userId);
   }
 
   async setActiveUser(userId: string): Promise<void> {
@@ -236,7 +287,6 @@ export class StateService<
     await this.updateState(async (state) => {
       state.activeUserId = userId;
       await this.storageService.save(keys.activeUserId, userId);
-      this.activeAccountSubject.next(state.activeUserId);
       // TODO: temporary update to avoid routing all account status changes through account service for now.
       this.accountService.switchAccount(userId as UserId);
 
@@ -583,12 +633,14 @@ export class StateService<
     const nextStatus = value != null ? AuthenticationStatus.Unlocked : AuthenticationStatus.Locked;
     this.accountService.setAccountStatus(options.userId as UserId, nextStatus);
 
-    if (options.userId == this.activeAccountSubject.getValue()) {
+    const state = await this.state();
+    if (options.userId == state.activeUserId) {
       const nextValue = value != null;
 
       // Avoid emitting if we are already unlocked
-      if (this.activeAccountUnlockedSubject.getValue() != nextValue) {
-        this.activeAccountUnlockedSubject.next(nextValue);
+      const unlocked = await firstValueFrom(this.activeAccountUnlocked$);
+      if (unlocked != nextValue) {
+        this.activeAccountUnlockedState.update(() => nextValue);
       }
     }
   }
@@ -619,12 +671,14 @@ export class StateService<
     const nextStatus = value != null ? AuthenticationStatus.Unlocked : AuthenticationStatus.Locked;
     this.accountService.setAccountStatus(options.userId as UserId, nextStatus);
 
-    if (options?.userId == this.activeAccountSubject.getValue()) {
+    const state = await this.state();
+    if (options?.userId == state.activeUserId) {
       const nextValue = value != null;
 
       // Avoid emitting if we are already unlocked
-      if (this.activeAccountUnlockedSubject.getValue() != nextValue) {
-        this.activeAccountUnlockedSubject.next(nextValue);
+      const unlocked = await firstValueFrom(this.activeAccountUnlocked$);
+      if (unlocked != nextValue) {
+        this.activeAccountUnlockedState.update(() => nextValue);
       }
     }
   }
@@ -2948,7 +3002,7 @@ export class StateService<
     }
 
     if (this.useAccountCache) {
-      const cachedAccount = this.accountDiskCache.value[options.userId];
+      const cachedAccount = (await this.diskCache())[options.userId];
       if (cachedAccount != null) {
         return cachedAccount;
       }
@@ -2962,7 +3016,7 @@ export class StateService<
         ))
       : await this.storageService.get<TAccount>(options.userId, options);
 
-    this.setDiskCache(options.userId, account);
+    await this.setDiskCache(options.userId, account);
     return account;
   }
 
@@ -2993,7 +3047,7 @@ export class StateService<
 
     await storageLocation.save(`${options.userId}`, account, options);
 
-    this.deleteDiskCache(options.userId);
+    await this.deleteDiskCache(options.userId);
   }
 
   protected async saveAccountToMemory(account: TAccount): Promise<void> {
@@ -3103,14 +3157,7 @@ export class StateService<
 
   protected async pushAccounts(): Promise<void> {
     await this.pruneInMemoryAccounts();
-    await this.state().then((state) => {
-      if (state.accounts == null || Object.keys(state.accounts).length < 1) {
-        this.accountsSubject.next({});
-        return;
-      }
-
-      this.accountsSubject.next(state.accounts);
-    });
+    // this.pushAccountsSubject.next();
   }
 
   protected reconcileOptions(
@@ -3213,7 +3260,7 @@ export class StateService<
       userId = userId ?? state.activeUserId;
       delete state.accounts[userId];
 
-      this.deleteDiskCache(userId);
+      await this.deleteDiskCache(userId);
 
       return state;
     });
@@ -3332,17 +3379,31 @@ export class StateService<
       : await this.secureStorageService.save(`${options.userId}${key}`, value, options);
   }
 
+  protected async diskCache(): Promise<{ [key: string]: TAccount }> {
+    const cache = await firstValueFrom(this.diskCacheState.state$);
+    return cache;
+  }
+
   protected async state(): Promise<State<TGlobalState, TAccount>> {
-    const state = await this.memoryStorageService.get<State<TGlobalState, TAccount>>(keys.state, {
-      deserializer: (s) => State.fromJSON(s, this.accountDeserializer),
-    });
-    return state;
+    console.log("getting state");
+    // const state = await this.memoryStorageService.get<State<TGlobalState, TAccount>>(
+    //   keys.state,
+    //   {
+    //     deserializer: (s) => State.fromJSON(s, this.accountDeserializer),
+    //   }
+    // );
+    // return state;
+
+    return await firstValueFrom(this.memoryState.state$.pipe(timeout(500)));
   }
 
   private async setState(state: State<TGlobalState, TAccount>): Promise<void> {
+    // console.log("saving state", state);
     await this.memoryStorageService.save(keys.state, state);
+    await this.memoryState.update(() => state);
   }
 
+  // TODO MDG: convert this to sync stateUpdater and/or use the update on the GlobalState instance
   protected async updateState(
     stateUpdater: (state: State<TGlobalState, TAccount>) => Promise<State<TGlobalState, TAccount>>
   ) {
@@ -3356,17 +3417,21 @@ export class StateService<
     });
   }
 
-  private setDiskCache(key: string, value: TAccount, options?: StorageOptions) {
+  private async setDiskCache(key: string, value: TAccount, options?: StorageOptions) {
     if (this.useAccountCache) {
-      this.accountDiskCache.value[key] = value;
-      this.accountDiskCache.next(this.accountDiskCache.value);
+      await this.diskCacheState.update((state) => {
+        state[key] = value;
+        return state;
+      });
     }
   }
 
-  protected deleteDiskCache(key: string) {
+  protected async deleteDiskCache(key: string) {
     if (this.useAccountCache) {
-      delete this.accountDiskCache.value[key];
-      this.accountDiskCache.next(this.accountDiskCache.value);
+      await this.diskCacheState.update((state) => {
+        delete state[key];
+        return state;
+      });
     }
   }
 }

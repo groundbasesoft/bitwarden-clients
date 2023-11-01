@@ -494,6 +494,7 @@ import { AbstractThemingService } from "./theming/theming.service.abstraction";
         LogService,
         STATE_FACTORY,
         AccountServiceAbstraction,
+        GlobalStateProvider,
         STATE_SERVICE_USE_CACHE,
       ],
     },

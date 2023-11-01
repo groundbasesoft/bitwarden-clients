@@ -161,9 +161,14 @@ export class AccountKeys {
       ),
       organizationKeys: AccountKeys.initRecordEncryptionPairsFromJSON(obj?.organizationKeys),
       providerKeys: AccountKeys.initRecordEncryptionPairsFromJSON(obj?.providerKeys),
-      privateKey: EncryptionPair.fromJSON<string, Uint8Array>(obj?.privateKey, (decObj: string) =>
-        Utils.fromByteStringToArray(decObj)
-      ),
+      privateKey: EncryptionPair.fromJSON<string, Uint8Array>(obj?.privateKey, (decObj: string) => {
+        if (typeof decObj === "string") {
+          return Utils.fromByteStringToArray(decObj);
+        } else {
+          // Assume it's already a byte array
+          return decObj;
+        }
+      }),
       publicKey: Utils.fromByteStringToArray(obj?.publicKey),
     });
   }

@@ -9,6 +9,10 @@ import { Account } from "../../../models/account";
 import { BrowserStateService } from "../../services/browser-state.service";
 
 import { CachedServices, factory, FactoryOptions } from "./factory-options";
+import {
+  globalStateProviderFactory,
+  GlobalStateProviderInitOptions,
+} from "./global-state-provider.factory";
 import { logServiceFactory, LogServiceInitOptions } from "./log-service.factory";
 import {
   diskStorageServiceFactory,
@@ -31,7 +35,8 @@ export type StateServiceInitOptions = StateServiceFactoryOptions &
   SecureStorageServiceInitOptions &
   MemoryStorageServiceInitOptions &
   LogServiceInitOptions &
-  AccountServiceInitOptions;
+  AccountServiceInitOptions &
+  GlobalStateProviderInitOptions;
 
 export async function stateServiceFactory(
   cache: { stateService?: BrowserStateService } & CachedServices,
@@ -49,6 +54,7 @@ export async function stateServiceFactory(
         await logServiceFactory(cache, opts),
         opts.stateServiceOptions.stateFactory,
         await accountServiceFactory(cache, opts),
+        await globalStateProviderFactory(cache, opts),
         opts.stateServiceOptions.useAccountCache
       )
   );

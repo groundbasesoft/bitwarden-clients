@@ -301,7 +301,8 @@ export default class MainBackground {
       this.memoryStorageService,
       this.logService,
       new StateFactory(GlobalState, Account),
-      this.accountService
+      this.accountService,
+      this.globalStateProvider
     );
     this.platformUtilsService = new BrowserPlatformUtilsService(
       this.messagingService,
