@@ -16,7 +16,6 @@ export interface GlobalState<T> {
    * @param options.msTimeout A timeout for how long you are willing to wait for a `combineLatestWith` option to complete. Defaults to 1000ms. Only applies if `combineLatestWith` is set.
    * @returns A promise that must be awaited before your next action to ensure the update has been written to state.
    */
-  // TODO: Add a should update callback?
   update: <TCombine>(
     configureState: (state: T, dependency: TCombine) => T,
     options?: StateUpdateOptions<T, TCombine>
