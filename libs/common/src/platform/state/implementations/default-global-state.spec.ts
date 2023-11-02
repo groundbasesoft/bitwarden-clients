@@ -3,7 +3,7 @@
  * @jest-environment ../shared/test.environment.ts
  */
 
-import { of } from "rxjs";
+import { firstValueFrom, of } from "rxjs";
 import { Jsonify } from "type-fest";
 
 import { trackEmissions } from "../../../../spec";
@@ -51,26 +51,36 @@ describe("DefaultGlobalState", () => {
     jest.resetAllMocks();
   });
 
-  it("should emit when storage updates", async () => {
-    const emissions = trackEmissions(globalState.state$);
-    await diskStorageService.save(globalKey, newData);
+  describe("state$", () => {
+    it("should emit when storage updates", async () => {
+      const emissions = trackEmissions(globalState.state$);
+      await diskStorageService.save(globalKey, newData);
 
-    expect(emissions).toEqual([
-      null, // Initial value
-      newData,
-      // JSON.parse(JSON.stringify(newData)), // This is due to the way `trackEmissions` clones
-    ]);
-  });
+      expect(emissions).toEqual([
+        newData,
+        // JSON.parse(JSON.stringify(newData)), // This is due to the way `trackEmissions` clones
+      ]);
+    });
 
-  it("should not emit when update key does not match", async () => {
-    const emissions = trackEmissions(globalState.state$);
-    await diskStorageService.save("wrong_key", newData);
+    it("should not emit when update key does not match", async () => {
+      const emissions = trackEmissions(globalState.state$);
+      await diskStorageService.save("wrong_key", newData);
 
-    expect(emissions).toEqual(
-      expect.arrayContaining([
-        null, // Initial value
-      ])
-    );
+      expect(emissions).toHaveLength(0);
+    });
+
+    it("should emit initial storage value on first subscribe", async () => {
+      const initialStorage: Record<string, TestState> = {};
+      initialStorage[globalKey] = TestState.fromJSON({
+        date: "2022-09-21T13:14:17.648Z",
+      });
+      diskStorageService.internalUpdateStore(initialStorage);
+
+      const state = await firstValueFrom(globalState.state$);
+      expect(diskStorageService.mock.get).toHaveBeenCalledTimes(1);
+      expect(diskStorageService.mock.get).toHaveBeenCalledWith("global_fake_fake", undefined);
+      expect(state).toBeTruthy();
+    });
   });
 
   describe("update", () => {
@@ -151,6 +161,28 @@ describe("DefaultGlobalState", () => {
         initialData,
         newData,
       ]);
+    });
+
+    it("should give initial state for update call", async () => {
+      const initialStorage: Record<string, TestState> = {};
+      const initialState = TestState.fromJSON({
+        date: "2022-09-21T13:14:17.648Z",
+      });
+      initialStorage[globalKey] = initialState;
+      diskStorageService.internalUpdateStore(initialStorage);
+
+      const emissions = trackEmissions(globalState.state$);
+
+      const newState = await globalState.update((existingState) => {
+        const existingDate = existingState.date;
+        expect(existingDate.getFullYear()).toBe(2022);
+        existingState.date = new Date(existingDate.getFullYear(), existingDate.getMonth() + 1);
+        return existingState;
+      });
+
+      expect(newState.date.getMonth()).toBe(10);
+      expect(emissions).toHaveLength(2);
+      expect(emissions).toEqual(expect.arrayContaining([initialState, newState]));
     });
   });
 });
